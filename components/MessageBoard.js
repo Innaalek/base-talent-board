@@ -5,10 +5,8 @@ const contractAddress = "0x0b4447778f4FE94C5a1ad10D3a3b4Fd3509d2A4D";
 
 const abi = [
   "event MessagePosted(address indexed user, string message, uint256 timestamp)",
-  "function postMessage(string calldata _text) external",
-  "function messages(uint256) view returns (address user, string text, uint256 timestamp)",
-  "function getMessagesCount() external view returns (uint256)",
-  "function getLatestMessage() external view returns (tuple(address user, string text, uint256 timestamp))"
+  "function postMessage(string calldata _text) external payable",
+  "function getMessages() external view returns (tuple(address user, string text, uint256 timestamp)[])"
 ];
 
 export default function MessageBoard() {
@@ -18,11 +16,26 @@ export default function MessageBoard() {
 
   async function connectWallet() {
     if (!window.ethereum) {
-      alert("Install MetaMask or Rabby first!");
+      alert("Install MetaMask or Rabby Wallet!");
       return;
     }
 
     const provider = new ethers.BrowserProvider(window.ethereum);
+    const network = await provider.getNetwork();
+
+    // Если сеть не Base — просим переключить
+    if (network.chainId !== 8453n) {
+      try {
+        await window.ethereum.request({
+          method: "wallet_switchEthereumChain",
+          params: [{ chainId: "0x2105" }], // Base Mainnet
+        });
+      } catch {
+        alert("Please switch to Base Mainnet in your wallet!");
+        return;
+      }
+    }
+
     const signer = await provider.getSigner();
     const c = new ethers.Contract(contractAddress, abi, signer);
     setContract(c);
@@ -31,67 +44,62 @@ export default function MessageBoard() {
 
   async function loadMessages(c) {
     if (!c) return;
-    const count = await c.getMessagesCount();
-    const temp = [];
-    for (let i = 0; i < count; i++) {
-      const m = await c.messages(i);
-      temp.push({
+    try {
+      const data = await c.getMessages();
+      const formatted = data.map(m => ({
         from: m.user,
         text: m.text,
         time: new Date(Number(m.timestamp) * 1000).toLocaleString()
-      });
+      }));
+      setMessages(formatted);
+    } catch (err) {
+      console.error("Read error:", err);
     }
-    setMessages(temp);
   }
 
   async function sendMessage() {
-  if (!contract) {
-    alert("Connect wallet first");
-    return;
+    if (!contract) {
+      alert("Connect wallet first");
+      return;
+    }
+    if (!message.trim()) return;
+
+    try {
+      const tx = await contract.postMessage(message, {
+        value: ethers.parseEther("0.000005"), // 👈 МАЛЕНЬКАЯ КОМИССИЯ
+      });
+      await tx.wait();
+      setMessage("");
+      loadMessages(contract);
+    } catch (err) {
+      console.error("TX error:", err);
+      alert("Transaction failed");
+    }
   }
 
-  if (!message.trim()) return;
-
-  try {
-    const tx = await contract.postMessage(message, {
-      value: ethers.parseEther("0.000005"), // комиссия
-    });
-
-    await tx.wait();
-    setMessage("");
-    loadMessages(contract);
-  } catch (err) {
-    console.error(err);
-    alert("Transaction failed");
-  }
-}
-
+  // Подписываемся на новые сообщения
   useEffect(() => {
     if (!contract) return;
-    contract.on("MessagePosted", (from, text, timestamp) => {
-      setMessages((prev) => [
+    const handler = (user, text, timestamp) => {
+      setMessages(prev => [
         ...prev,
-        {
-          from,
-          text,
-          time: new Date(Number(timestamp) * 1000).toLocaleString()
-        }
+        { from: user, text, time: new Date(Number(timestamp) * 1000).toLocaleString() }
       ]);
-    });
-
-    return () => contract.removeAllListeners();
+    };
+    contract.on("MessagePosted", handler);
+    return () => contract.off("MessagePosted", handler);
   }, [contract]);
 
   return (
-    <div style={{ padding: "20px", fontFamily: "Arial" }}>
+    <div style={{ padding: 20, fontFamily: "Arial" }}>
       <button onClick={connectWallet}>Connect Wallet</button>
 
-      <div style={{ marginTop: "20px" }}>
+      <div style={{ marginTop: 20 }}>
         <textarea
           value={message}
-          onChange={(e) => setMessage(e.target.value)}
+          onChange={e => setMessage(e.target.value)}
           placeholder="Write a message..."
-          style={{ width: "100%", padding: "10px" }}
+          style={{ width: "100%", padding: 10 }}
         />
         <button onClick={sendMessage}>Publish</button>
       </div>
@@ -100,7 +108,7 @@ export default function MessageBoard() {
       <ul>
         {messages.map((m, i) => (
           <li key={i}>
-            <strong>{m.from.slice(0, 6)}...</strong>: {m.text} <em>({m.time})</em>
+            <b>{m.from.slice(0,6)}...</b>: {m.text} <i>({m.time})</i>
           </li>
         ))}
       </ul>
