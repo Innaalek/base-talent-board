@@ -5,63 +5,92 @@ const contractAddress = "0x2E1476Ba7D284e931389710904569FFdd1eC10F1";
 
 const abi = [
   "event MessagePosted(address indexed user, string message, uint256 timestamp)",
-  "function postMessage(string calldata _text) external",
-  "function getMessagesCount() external view returns(uint256)",
-  "function messages(uint256) external view returns(address user, string text, uint256 timestamp)"
+  "function postMessage(string calldata text) external",
+  "function messages(uint256) public view returns (address user, string text, uint256 timestamp)",
+  "function getMessagesCount() external view returns (uint256)",
+  "function getLatestMessage() external view returns (tuple(address user, string text, uint256 timestamp))"
 ];
 
 export default function MessageBoard() {
   const [contract, setContract] = useState(null);
-  const [input, setInput] = useState("");
-  const [messages, setMessages] = useState([]);
+  const [message, setMessage] = useState("");
+  const [messagesList, setMessagesList] = useState([]);
 
-  async function connect() {
-    if (!window.ethereum) return alert("Install wallet");
-    await window.ethereum.request({ method: "eth_requestAccounts" });
+  async function connectWallet() {
+    if (!window.ethereum) {
+      alert("Install MetaMask or Rabby first!");
+      return;
+    }
+
     const provider = new ethers.BrowserProvider(window.ethereum);
+    await window.ethereum.request({ method: "eth_requestAccounts" });
     const signer = await provider.getSigner();
+
     const c = new ethers.Contract(contractAddress, abi, signer);
     setContract(c);
-    load(provider);
+    loadAllMessages(c);
+
+    // слушаем событие и добавляем новое сообщение в UI сразу
+    c.on("MessagePosted", (user, text, timestamp) => {
+      setMessagesList(prev => [
+        {
+          from: user,
+          text,
+          time: new Date(Number(timestamp) * 1000).toLocaleString()
+        },
+        ...prev
+      ]);
+    });
   }
 
-  async function load(provider) {
-    const c = new ethers.Contract(contractAddress, abi, provider);
+  async function loadAllMessages(c) {
     const count = await c.getMessagesCount();
-    const arr = [];
-    for (let i = 0; i < count; i++) {
+    const temp = [];
+
+    for (let i = count - 1; i >= 0; i--) {
       const m = await c.messages(i);
-      arr.push(m);
+      temp.push({
+        from: m.user,
+        text: m.text,
+        time: new Date(Number(m.timestamp) * 1000).toLocaleString()
+      });
     }
-    setMessages(arr);
+
+    setMessagesList(temp);
   }
 
-  async function publish() {
-    if (!contract || !input.trim()) return;
-    const tx = await contract.postMessage(input);
+  async function sendMessage() {
+    if (!contract) {
+      alert("Connect wallet first");
+      return;
+    }
+    if (!message.trim()) return;
+
+    const tx = await contract.postMessage(message);
     await tx.wait();
-    setInput("");
+    setMessage("");
   }
-
-  useEffect(() => {
-    connect();
-  }, []);
 
   return (
-    <div style={{ padding: 20, fontFamily: "Arial" }}>
-      <button onClick={connect}>Connect Wallet</button>
-      <textarea
-        value={input}
-        onChange={e => setInput(e.target.value)}
-        placeholder="Write a message..."
-        style={{ width: "100%", padding: 10, marginTop: 10 }}
-      />
-      <button onClick={publish}>Publish</button>
+    <div style={{ padding: "20px", fontFamily: "Arial" }}>
+      <button onClick={connectWallet}>Connect Wallet</button>
+
+      <div style={{ marginTop: "20px" }}>
+        <textarea
+          value={message}
+          onChange={(e) => setMessage(e.target.value)}
+          placeholder="Write a message..."
+          style={{ width: "100%", padding: "10px" }}
+        />
+        <button onClick={sendMessage}>Publish</button>
+      </div>
 
       <h3>Messages on-chain:</h3>
       <ul>
-        {messages.map((m,i) => (
-          <li key={i}>{m.text}</li>
+        {messagesList.map((m, i) => (
+          <li key={i}>
+            <strong>{m.from.slice(0, 6)}...</strong>: {m.text} <em>({m.time})</em>
+          </li>
         ))}
       </ul>
     </div>
