@@ -1,45 +1,57 @@
 import { useState, useEffect } from "react";
 import { ethers } from "ethers";
 
-const contractAddress = "ТВОЙ_КОНТРАКТ_АДРЕС";
+const contractAddress = "0x2E1476Ba7D284e931389710904569FFdd1eC10F1";
 
 const abi = [
   "event MessagePosted(address indexed user, string message, uint256 timestamp)",
   "function postMessage(string _text) external",
-  "function getMessages() external view returns (tuple(address user, string text, uint256 timestamp)[])"
+  "function getMessagesCount() external view returns (uint256)",
+  "function getLatestMessage() external view returns (tuple(address user, string text, uint256 timestamp))"
 ];
 
 export default function MessageBoard() {
   const [contract, setContract] = useState(null);
   const [message, setMessage] = useState("");
-  const [messages, setMessages] = useState([]);
+  const [latestMessage, setLatestMessage] = useState(null);
+  const [count, setCount] = useState(0);
 
-  // 🔹 Автозагрузка сообщений
+  // Автозагрузка количества и последнего сообщения
   useEffect(() => {
-    loadMessagesReadonly();
+    loadData();
   }, []);
 
-  async function loadMessagesReadonly() {
-    if (!window.ethereum) return;
+  async function loadData() {
+    try {
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      const c = new ethers.Contract(contractAddress, abi, provider);
 
-    const provider = new ethers.BrowserProvider(window.ethereum);
-    const c = new ethers.Contract(contractAddress, abi, provider);
+      const total = await c.getMessagesCount();
+      setCount(Number(total));
 
-    const data = await c.getMessages();
-    setMessages(
-      data.map(m => ({
-        user: m.user,
-        text: m.text,
-        time: new Date(Number(m.timestamp) * 1000).toLocaleString()
-      }))
-    );
+      if (total > 0) {
+        const last = await c.getLatestMessage();
+        setLatestMessage({
+          user: last[0],
+          text: last[1],
+          time: new Date(Number(last[2]) * 1000).toLocaleString()
+        });
+      }
+    } catch (err) {
+      console.error("Load error:", err);
+    }
   }
 
   async function connectWallet() {
+    if (!window.ethereum) {
+      alert("Install wallet!");
+      return;
+    }
+
     const provider = new ethers.BrowserProvider(window.ethereum);
     const signer = await provider.getSigner();
-
     const c = new ethers.Contract(contractAddress, abi, signer);
+
     setContract(c);
   }
 
@@ -49,34 +61,43 @@ export default function MessageBoard() {
       return;
     }
 
-    const tx = await contract.postMessage(message);
-    await tx.wait();
-
-    setMessage("");
-    loadMessagesReadonly(); // 🔹 обновляем список
+    try {
+      const tx = await contract.postMessage(message);
+      await tx.wait();
+      setMessage("");
+      loadData(); // обновляем данные после публикации
+    } catch (err) {
+      console.error("Publish error:", err);
+      alert("Transaction failed or wrong network");
+    }
   }
 
   return (
-    <div style={{ padding: 20 }}>
+    <div style={{ padding: 20, fontFamily: "Arial" }}>
       <button onClick={connectWallet}>Connect Wallet</button>
 
-      <textarea
-        value={message}
-        onChange={e => setMessage(e.target.value)}
-        placeholder="Write a message..."
-        style={{ width: "100%", marginTop: 10 }}
-      />
+      <div style={{ marginTop: 20 }}>
+        <textarea
+          value={message}
+          onChange={(e) => setMessage(e.target.value)}
+          placeholder="Write a message..."
+          style={{ width: "100%", padding: 10 }}
+        />
 
-      <button onClick={publishMessage}>Publish</button>
+        <button onClick={publishMessage} style={{ marginTop: 10 }}>
+          Publish
+        </button>
+      </div>
 
       <h3>Messages on-chain:</h3>
-      <ul>
-        {messages.map((m, i) => (
-          <li key={i}>
-            <b>{m.user.slice(0,6)}...</b>: {m.text} ({m.time})
-          </li>
-        ))}
-      </ul>
+      <p><b>Total messages:</b> {count}</p>
+
+      {latestMessage && (
+        <p>
+          <b>Last from {latestMessage.user.slice(0,6)}...</b>:  
+          {latestMessage.text} ({latestMessage.time})
+        </p>
+      )}
     </div>
   );
 }
