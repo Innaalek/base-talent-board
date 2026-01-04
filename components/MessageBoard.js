@@ -52,21 +52,31 @@ export default function MessageBoard() {
   }
 
   async function sendMessage() {
-    if (!contract || !message.trim()) return;
-
-    try {
-      const tx = await contract.postMessage(message, {
-        value: ethers.parseEther("0.000005")
-      });
-      await tx.wait();
-      setMessage("");
-      loadMessages(contract);
-    } catch (e) {
-      console.error(e);
-      alert("Transaction failed");
-    }
+  if (!window.ethereum) {
+    alert("Wallet not found");
+    return;
   }
 
+  const provider = new ethers.BrowserProvider(window.ethereum);
+  const signer = await provider.getSigner();
+
+  const fee = ethers.parseEther("0.000005");
+
+  try {
+    const tx = await signer.sendTransaction({
+      to: contractAddress,
+      data: contract.interface.encodeFunctionData("postMessage", [message]),
+      value: fee
+    });
+
+    await tx.wait();
+    setMessage("");
+    loadMessages(contract);
+  } catch (err) {
+    console.error("Publish error:", err);
+    alert("Transaction failed");
+  }
+}
   useEffect(() => {
     if (!contract) return;
     contract.on("MessagePosted", () => loadMessages(contract));
