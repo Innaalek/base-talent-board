@@ -1,8 +1,7 @@
 import { useState, useEffect } from "react";
 import { ethers } from "ethers";
 
-const contractAddress = "0x2E1476Ba7D284e931389710904569FFdd1eC10F1";
-
+const contractAddress = "0x0b4447778f4FE94C5a1ad10D3a3b4Fd3509d2A4D";
 const abi = [
   "event MessagePosted(address indexed user, string message, uint256 timestamp)",
   "function postMessage(string _text) external",
