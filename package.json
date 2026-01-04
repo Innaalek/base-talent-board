@@ -1,0 +1,13 @@
+{
+  "name": "base-talent-board",
+  "private": true,
+  "scripts": {
+    "build": "next build",
+    "start": "next start"
+  },
+  "dependencies": {
+    "ethers": "6.7.1",
+    "next": "16.1.1",
+    "react": "18.2.0"
+  }
+}
