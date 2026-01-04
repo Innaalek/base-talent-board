@@ -45,23 +45,26 @@ export default function MessageBoard() {
   }
 
   async function sendMessage() {
-    if (!contract) {
-      alert("Connect wallet first");
-      return;
-    }
-    if (!message.trim()) return;
-
-    try {
-      const tx = await contract.postMessage(message, {
-        value: ethers.parseEther("0.000005")
-      });
-      await tx.wait();
-      setMessage("");
-      loadMessages(contract);
-    } catch (err) {
-      alert("Transaction failed");
-    }
+  if (!contract) {
+    alert("Connect wallet first");
+    return;
   }
+
+  if (!message.trim()) return;
+
+  try {
+    const tx = await contract.postMessage(message, {
+      value: ethers.parseEther("0.000005"), // комиссия
+    });
+
+    await tx.wait();
+    setMessage("");
+    loadMessages(contract);
+  } catch (err) {
+    console.error(err);
+    alert("Transaction failed");
+  }
+}
 
   useEffect(() => {
     if (!contract) return;
